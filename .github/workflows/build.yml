@@ -1,11 +1,14 @@
 name: Manual Build
 
 on:
-  workflow_dispatch: # 讓你可以在 Actions 頁面手動點擊按鈕編譯
+  workflow_dispatch: # 允許手動點擊按鈕編譯
 
 env:
   SOLUTION_FILE_PATH: .
   BUILD_CONFIGURATION: Release
+
+permissions:
+  contents: read
 
 jobs:
   build:
@@ -17,14 +20,16 @@ jobs:
         fetch-depth: 0         
         submodules: 'true'
 
-    # 自動抓取版本號（保留你原本的邏輯）
+    # 提取版本號邏輯
     - name: Extract OptiScaler Version
       id: get_version
       working-directory: ${{ github.workspace }}
       shell: powershell
       run: |
         $resourceFile = ".\OptiScaler\resource.h"
-        if (-Not (Test-Path $resourceFile)) { exit 1 }
+        if (-Not (Test-Path $resourceFile)) { 
+            Write-Error "Resource file not found"; exit 1 
+        }
         function Get-Version-Component {
             param ([string]$pattern, [string]$replacement)
             $line = Get-Content $resourceFile | Select-String -Pattern $pattern | Select-Object -First 1
@@ -43,20 +48,20 @@ jobs:
     - name: Add MSBuild to PATH
       uses: microsoft/setup-msbuild@v2
 
-    # 執行編譯
+    # 執行編譯（這是最關鍵的一步）
     - name: Build
       working-directory: ${{env.GITHUB_WORKSPACE}}
       run: msbuild /m /p:Configuration=${{env.BUILD_CONFIGURATION}} ${{env.SOLUTION_FILE_PATH}} /verbosity:minimal
-      
-    # 壓縮產出物 (DLL 檔案)
+
+    # 壓縮產出的 DLL (路徑已修正為標準 Release 路徑)
     - name: Compress the artifact 
       shell: powershell
       run: |
         $zipName = "${{ steps.get_version.outputs.filename }}.7z"
-        # 注意：這裡路徑需對應 MSBuild 產出的位置
+        # 這裡會抓取 x64/Release 資料夾下所有的編譯產物
         7z a -r "${{ github.workspace }}\$zipName" "${{ github.workspace }}\x64\Release\*"
 
-    # 【最重要】上傳到 Actions 頁面供下載
+    # 上傳到 GitHub Actions 介面供你點擊下載
     - name: Upload to Actions Artifacts
       uses: actions/upload-artifact@v4
       with:
